@@ -4,6 +4,15 @@ metadata:
   name: bggns
 
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bggdb-secret
+  namespace: bggns
+data:
+  BGG_DB_PASSWORD: Y2hhbmdlaXQ=
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,7 +63,10 @@ spec:
         - name: BGG_DB_HOST
           value: bggdb-svc.bggns.svc.cluster.local
         - name: BGG_DB_PASSWORD
-          value: changeit
+          valueFrom:
+            secretKeyRef:
+              name: bggdb-secret
+              key: BGG_DB_PASSWORD
         ports:
         - containerPort: 3000
         readinessProbe:
