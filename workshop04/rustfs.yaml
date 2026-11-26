@@ -1,0 +1,121 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workshop04
+  labels:
+    gateway: allowed
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rustfs-secret
+  namespace: workshop04
+stringData:
+  RUSTFS_ACCESS_KEY: admin
+  RUSTFS_SECRET_KEY: adminadmin1234
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rustfs-cm
+  namespace: workshop04
+data:
+  RUSTFS_ADDRESS: 0.0.0.0:9000
+  RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+  RUSTFS_CONSOLE_ENABLE: "true"
+  RUSTFS_VOLUMES: http://rustfs-{0...2}.rustfs-hsvc.workshop04.svc.cluster.local:9000/data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs-hsvc
+  namespace: workshop04
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: rustfs
+  ports:
+  - name: s3
+    port: 9000
+    targetPort: s3-port
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs-svc
+  namespace: workshop04
+spec:
+  type: ClusterIP
+  selector:
+    app: rustfs
+  ports:
+  - name: s3
+    port: 9000
+    targetPort: s3-port
+  - name: console
+    port: 9001
+    targetPort: console-port
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rustfs
+  namespace: workshop04
+spec:
+  serviceName: rustfs-hsvc
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      &pod-labels
+      app: rustfs
+  volumeClaimTemplates:
+  - metadata:
+      name: data-vol
+    spec:
+      storageClassName: standard
+      accessModes: [ ReadWriteOncePod ]
+      resources:
+        requests:
+          storage: 1Gi
+  template:
+    metadata:
+      labels:
+        <<: *pod-labels
+    spec:
+      containers:
+      - name: rustfs-container
+        image: rustfs/rustfs:latest
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: rustfs-cm
+        - secretRef:
+            name: rustfs-secret
+        ports:
+        - name: s3-port
+          containerPort: 9000
+        - name: console-port
+          containerPort: 9001
+        readinessProbe:
+          tcpSocket:
+            port: s3-port
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 200m
+            memory: 250Mi
+          limits:
+            cpu: 200m
+            memory: 250Mi
+        volumeMounts:
+        - name: data-vol
+          mountPath: /data
